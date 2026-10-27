@@ -25,7 +25,7 @@
 5. Simultaneidad: Diferentes unidades físicas (ej. MIC-01 y MIC-02) pueden reservarse en el mismo rango horario.
 6. Cancelación: Libera el horario para futuras reservas, pero el registro original se conserva con su ID y estado 'CANCELADA' para tener un historial.
 7. Consulta de disponibilidad: Permitir consultar si una unidad está libre en un intervalo dado aplicando exactamente las mismas reglas de superposición (ignorando canceladas).
-9. Persistencia: Almacenar en SQLite local ('data/reservas.db') para que los datos persistan tras detener y reiniciar.
+8. Persistencia: Almacenar en SQLite local ('data/reservas.db') para que los datos persistan tras detener y reiniciar.
 
 ## Restricciones
 - **Zona horaria y Fechas**: Usar objetos `datetime` naive parseados desde ISO 8601 (`YYYY-MM-DDTHH:MM`), asumiendo hora local del laboratorio. Permitir fechas en cualquier año/mes para facilitar tests deterministas.
