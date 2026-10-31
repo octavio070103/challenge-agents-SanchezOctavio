@@ -158,3 +158,10 @@ class ReservaRepository:
             cursor.execute(query, params)
             rows = cursor.fetchall()
             return [self._row_to_reserva(r) for r in rows]
+
+    def limpiar_reservas(self) -> None:
+        """Elimina todas las reservas de la tabla SQLite para permitir un reinicio controlado."""
+        with self._connection() as conn:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM reservas;")

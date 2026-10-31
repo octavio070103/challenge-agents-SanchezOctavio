@@ -247,22 +247,81 @@ def test_formato_fecha_invalido_rechazado(service, fecha_invalida):
 # 9. Persistencia SQLite
 # ==============================================================================
 def test_persistencia_recarga_sqlite(temp_db_path):
-    """Verifica que las reservas persistan en el archivo SQLite tras reiniciar el servicio."""
-    # Instancia 1 crea reserva
+    """
+    Verifica que tanto las reservas activas como las canceladas persistan intactas en
+    el archivo SQLite tras detener y reiniciar el servicio sin borrar datos, manteniendo
+    liberado el intervalo de la cancelada y bloqueado el de la activa.
+    """
+    # Instancia 1 crea reservas R1 y R2, y luego cancela R1
     svc1 = ReservaService(db_path=temp_db_path, inventory_path="data/inventory.json")
-    r1 = svc1.crear_reserva("FUE-01", "Persistente", "2026-11-10T08:00", "2026-11-10T09:30")
+    r1 = svc1.crear_reserva("FUE-01", "Solicitante Cancelado", "2026-11-10T08:00", "2026-11-10T09:30")
+    r2 = svc1.crear_reserva("FUE-01", "Solicitante Activo", "2026-11-10T10:00", "2026-11-10T11:30")
+    svc1.cancelar_reserva(r1.id)
 
-    # Instancia 2 se conecta a la misma base de datos
+    r1_id = r1.id
+    r2_id = r2.id
+
+    # Simular detención total de la aplicación eliminando la instancia del servicio
+    del svc1
+
+    # Instancia 2 se conecta exactamente al mismo archivo SQLite tras el reinicio
     svc2 = ReservaService(db_path=temp_db_path, inventory_path="data/inventory.json")
-    r_cargada = svc2.obtener_reserva(r1.id)
 
-    assert r_cargada is not None
-    assert r_cargada.id == r1.id
-    assert r_cargada.unidad_id == "FUE-01"
-    assert r_cargada.solicitante == "Persistente"
-    assert r_cargada.fecha_inicio == datetime(2026, 11, 10, 8, 0)
-    assert r_cargada.fecha_fin == datetime(2026, 11, 10, 9, 30)
-    assert r_cargada.estado == "ACTIVA"
+    # Verificar que R1 sigue intacta en el historial con estado CANCELADA
+    r1_cargada = svc2.obtener_reserva(r1_id)
+    assert r1_cargada is not None
+    assert r1_cargada.id == r1_id
+    assert r1_cargada.unidad_id == "FUE-01"
+    assert r1_cargada.solicitante == "Solicitante Cancelado"
+    assert r1_cargada.fecha_inicio == datetime(2026, 11, 10, 8, 0)
+    assert r1_cargada.fecha_fin == datetime(2026, 11, 10, 9, 30)
+    assert r1_cargada.estado == "CANCELADA"
+
+    # Verificar que R2 sigue intacta con estado ACTIVA
+    r2_cargada = svc2.obtener_reserva(r2_id)
+    assert r2_cargada is not None
+    assert r2_cargada.id == r2_id
+    assert r2_cargada.unidad_id == "FUE-01"
+    assert r2_cargada.solicitante == "Solicitante Activo"
+    assert r2_cargada.fecha_inicio == datetime(2026, 11, 10, 10, 0)
+    assert r2_cargada.fecha_fin == datetime(2026, 11, 10, 11, 30)
+    assert r2_cargada.estado == "ACTIVA"
+
+    # Crear nueva reserva R3 en el mismo horario exacto que ocupaba R1 (el intervalo sigue liberado tras reinicio)
+    r3 = svc2.crear_reserva("FUE-01", "Nuevo Solicitante", "2026-11-10T08:00", "2026-11-10T09:30")
+    assert r3.id is not None
+    assert r3.id != r1_id
+    assert r3.estado == "ACTIVA"
+
+    # Verificar que el horario de R2 sigue bloqueando superposiciones tras el reinicio
+    with pytest.raises(SuperposicionError):
+        svc2.crear_reserva("FUE-01", "Intruso", "2026-11-10T10:30", "2026-11-10T11:00")
+
+
+def test_limpiar_reservas(service):
+    """
+    Verifica que limpiar_reservas() elimine todas las reservas (activas y canceladas)
+    de la tabla SQLite sin afectar el inventario en data/inventory.json.
+    """
+    r1 = service.crear_reserva("MIC-01", "User 1", "2026-11-10T08:00", "2026-11-10T09:00")
+    r2 = service.crear_reserva("OSC-01", "User 2", "2026-11-10T10:00", "2026-11-10T11:00")
+    service.cancelar_reserva(r1.id)
+
+    assert len(service.listar_reservas()) == 2
+
+    # Ejecutar limpieza controlada de datos
+    service.limpiar_reservas()
+
+    # Verificar que no quedan reservas en SQLite
+    assert len(service.listar_reservas()) == 0
+    assert service.obtener_reserva(r1.id) is None
+    assert service.obtener_reserva(r2.id) is None
+
+    # Verificar que el horario de r2 quedó libre y el catálogo en data/inventory.json sigue intacto
+    unidades = cargar_inventario("data/inventory.json")
+    assert len(unidades) == 5
+    nueva = service.crear_reserva("OSC-01", "User 3", "2026-11-10T10:00", "2026-11-10T11:00")
+    assert nueva.estado == "ACTIVA"
 
 
 def test_rechazo_fechas_con_timezone_aware(service):

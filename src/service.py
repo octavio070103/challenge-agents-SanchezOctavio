@@ -165,3 +165,7 @@ class ReservaService:
     ) -> List[Reserva]:
         """Lista las reservas registradas según filtros."""
         return self.repository.obtener_todas(unidad_id=unidad_id, solo_activas=solo_activas)
+
+    def limpiar_reservas(self) -> None:
+        """Elimina todas las reservas registradas en la base de datos sin alterar el inventario."""
+        self.repository.limpiar_reservas()
